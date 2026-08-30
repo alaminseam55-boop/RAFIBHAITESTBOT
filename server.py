@@ -28,23 +28,28 @@ def init_history():
 
 candles = init_history()
 
+# টেলিগ্রাম মেসেজ সেন্ডার ও এরর লগার
 async def send_telegram(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"}
     try:
         async with ClientSession() as session:
             async with session.post(url, json=payload) as resp:
-                pass
+                res_data = await resp.json()
+                if not res_data.get("ok"):
+                    print(f"❌ [TELEGRAM API ERROR]: {res_data.get('description')}")
+                else:
+                    print("✅ [TELEGRAM SUCCESS] Message posted to channel!")
     except Exception as e:
-        print(f">> [TELEGRAM ERROR] {e}")
+        print(f"❌ [TELEGRAM NETWORK ERROR]: {e}")
 
 def get_market_structure(c_list):
     if len(c_list) < 6: return "SIDEWAYS"
     recent = c_list[-6:]
     highs = [c["high"] for c in recent]
     lows = [c["low"] for c in recent]
-    if highs[-1] > highs[-3] and lows[-1] > lows[-3]: return "UPTREND"
-    elif highs[-1] < highs[-3] and lows[-1] < lows[-3]: return "DOWNTREND"
+    if highs[-1] >= highs[-3] and lows[-1] >= lows[-3]: return "UPTREND"
+    elif highs[-1] <= highs[-3] and lows[-1] <= lows[-3]: return "DOWNTREND"
     return "SIDEWAYS"
 
 def detect_fractals(c_list):
@@ -65,16 +70,9 @@ def check_candle_reaction(candle):
     body = abs(candle["close"] - candle["open"])
     lower_wick = min(candle["open"], candle["close"]) - candle["low"]
     upper_wick = candle["high"] - max(candle["open"], candle["close"])
-    if lower_wick > body * 1.2 and candle["close"] > candle["open"]: return "BULLISH_REJECTION"
-    elif upper_wick > body * 1.2 and candle["close"] < candle["open"]: return "BEARISH_REJECTION"
+    if lower_wick > body * 0.8 and candle["close"] >= candle["open"]: return "BULLISH_REJECTION"
+    elif upper_wick > body * 0.8 and candle["close"] <= candle["open"]: return "BEARISH_REJECTION"
     return "NONE"
-
-def check_consecutive_movement(c_list):
-    if len(c_list) < 2: return "NEUTRAL"
-    c1, c2 = c_list[-2], c_list[-1]
-    if c1["close"] > c1["open"] and c2["close"] > c2["open"]: return "BULLISH_MOMENTUM"
-    elif c1["close"] < c1["open"] and c2["close"] < c2["open"]: return "BEARISH_MOMENTUM"
-    return "NEUTRAL"
 
 async def broadcast(data):
     for ws in list(ws_clients):
@@ -90,6 +88,10 @@ async def rafi_bhai_engine():
     trade_type = ""
     trade_entry = 0.0
     setup_name = ""
+
+    # সার্ভার চালু হওয়ামাত্রই টেলিগ্রাম টেস্ট মেসেজ
+    await asyncio.sleep(3)
+    await send_telegram("🚀 <b>RAFI BHAI AI BOT ONLINE!</b>\n\nসিস্টেম চালু হয়েছে এবং মার্কেট স্ক্যানিং শুরু হয়েছে।")
 
     while True:
         await asyncio.sleep(1)
@@ -113,33 +115,22 @@ async def rafi_bhai_engine():
 
         await broadcast({"type": "TICK", "price": current_price, "candle": candles[-1]})
 
-        if not in_trade and 54 <= sec <= 57 and len(candles) >= 6:
+        # ৫৫-৫৮ সেকেন্ডে নিশ্চিত সিগন্যাল তৈরি
+        if not in_trade and 54 <= sec <= 57 and len(candles) >= 5:
             trend = get_market_structure(candles[:-1])
             up_f, down_f = detect_fractals(candles[:-1])
             reaction = check_candle_reaction(candles[-1])
-            momentum = check_consecutive_movement(candles)
             
             sig_found = False
-            if trend == "UPTREND" and down_f and abs(current_price - down_f[-1]) <= 0.03:
-                if reaction == "BULLISH_REJECTION" or momentum == "BULLISH_MOMENTUM":
-                    trade_type = "BUY (CALL)"
-                    setup_name = "Uptrend + Fractal Low Rejection"
-                    sig_found = True
-            elif trend == "DOWNTREND" and up_f and abs(current_price - up_f[-1]) <= 0.03:
-                if reaction == "BEARISH_REJECTION" or momentum == "BEARISH_MOMENTUM":
-                    trade_type = "SELL (PUT)"
-                    setup_name = "Downtrend + Fractal High Rejection"
-                    sig_found = True
             
-            if not sig_found:
-                if reaction == "BULLISH_REJECTION":
-                    trade_type = "BUY (CALL)"
-                    setup_name = "Lower Wick Bullish Rejection"
-                    sig_found = True
-                elif reaction == "BEARISH_REJECTION":
-                    trade_type = "SELL (PUT)"
-                    setup_name = "Upper Wick Bearish Rejection"
-                    sig_found = True
+            if trend == "UPTREND" or reaction == "BULLISH_REJECTION" or current_price > candles[-1]["open"]:
+                trade_type = "BUY (CALL)"
+                setup_name = "Price Action Bullish Flow"
+                sig_found = True
+            else:
+                trade_type = "SELL (PUT)"
+                setup_name = "Price Action Bearish Flow"
+                sig_found = True
 
             if sig_found:
                 in_trade = True
