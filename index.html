@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAFI BHAI AI BOT PRO</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #07090e; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .glass-card { background: rgba(14, 20, 32, 0.95); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; }
+  </style>
+</head>
+<body class="flex justify-center bg-black min-h-screen p-2 pb-24">
+  <div class="w-full max-w-md flex flex-col gap-2.5">
+    <header class="glass-card flex items-center justify-between p-3 border-emerald-500/20">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+          <i class="fa-solid fa-robot text-base"></i>
+        </div>
+        <div>
+          <h1 class="font-black text-sm tracking-wider text-emerald-400">RAFI BHAI <span class="text-amber-400">AI BOT</span></h1>
+          <p class="text-[9px] text-slate-400">4-Confluence Strict Price Action</p>
+        </div>
+      </div>
+      <span class="text-xs bg-emerald-950 text-emerald-400 border border-emerald-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 font-bold">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> LIVE
+      </span>
+    </header>
+
+    <div class="glass-card p-2.5 flex flex-col gap-1.5">
+      <div class="flex justify-between items-center text-xs px-1">
+        <span class="font-bold text-emerald-400">USD/BDT (OTC)</span>
+        <div id="chart-price" class="font-mono text-emerald-400 font-black text-sm">122.278</div>
+      </div>
+      <div id="tv-chart" style="width: 100%; height: 185px;"></div>
+    </div>
+
+    <div id="sig-card" class="glass-card p-3.5 flex flex-col gap-2 border border-slate-700/60 text-xs font-mono">
+      <div class="text-center text-amber-300 font-black text-[12px] tracking-widest border-b border-slate-800 pb-1.5">
+        ⚡ RAFI BHAI PRO SIGNAL ⚡
+      </div>
+      <div class="flex flex-col gap-1.5 text-slate-300 py-1">
+        <div class="flex items-center justify-between"><span class="text-slate-400">💎 ASSET</span><span class="text-white font-bold" id="sig-asset">USD/BDT (OTC)</span></div>
+        <div class="flex items-center justify-between"><span class="text-slate-400">⏰ TIME</span><span class="text-white font-bold" id="sig-time">Scanning Confluence...</span></div>
+        <div class="flex items-center justify-between"><span class="text-slate-400">🟢 DIRECTION</span><span class="text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30" id="sig-dir">SEARCHING...</span></div>
+        <div class="flex items-center justify-between"><span class="text-slate-400">💰 ENTRY PRICE</span><span class="text-amber-400 font-bold" id="sig-price">122.278</span></div>
+        <div class="flex items-center justify-between"><span class="text-slate-400">🧩 SETUP</span><span class="text-slate-200 text-[10px] text-right font-sans" id="sig-setup">Market Structure + Fractal</span></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-3 gap-1.5 text-center text-xs">
+      <div class="glass-card p-2 flex flex-col gap-0.5"><span class="text-slate-400 text-[10px]">WINS</span><span class="text-emerald-400 font-bold text-base" id="stat-wins">0</span></div>
+      <div class="glass-card p-2 flex flex-col gap-0.5"><span class="text-slate-400 text-[10px]">LOSSES</span><span class="text-rose-400 font-bold text-base" id="stat-losses">0</span></div>
+      <div class="glass-card p-2 flex flex-col gap-0.5"><span class="text-slate-400 text-[10px]">WIN RATE</span><span class="text-amber-400 font-bold text-base" id="stat-winrate">0%</span></div>
+    </div>
+  </div>
+
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const chartContainer = document.getElementById("tv-chart");
+      const chart = LightweightCharts.createChart(chartContainer, {
+        width: chartContainer.clientWidth || 340, height: 185,
+        layout: { background: { color: "#0e1420" }, textColor: "#8b949e" },
+        grid: { vertLines: { color: "#1a2234" }, horzLines: { color: "#1a2234" } },
+        timeScale: { timeVisible: true, secondsVisible: true, borderVisible: false },
+        rightPriceScale: { borderVisible: false }
+      });
+      const candleSeries = chart.addCandlestickSeries({ upColor: "#00E676", downColor: "#FF1744", borderVisible: false, wickUpColor: "#00E676", wickDownColor: "#FF1744" });
+      window.addEventListener("resize", () => chart.resize(chartContainer.clientWidth, 185));
+
+      const wsUrl = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
+      const ws = new WebSocket(wsUrl);
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === "INIT") {
+          if (msg.history) candleSeries.setData(msg.history);
+          chart.timeScale().fitContent();
+          if (msg.wins !== undefined) document.getElementById("stat-wins").innerText = msg.wins;
+          if (msg.losses !== undefined) document.getElementById("stat-losses").innerText = msg.losses;
+          if (msg.win_rate !== undefined) document.getElementById("stat-winrate").innerText = msg.win_rate;
+        }
+        if (msg.type === "TICK") {
+          document.getElementById("chart-price").innerText = msg.price.toFixed(4);
+          if (msg.candle) candleSeries.update(msg.candle);
+        }
+        if (msg.type === "NEW_SIGNAL") {
+          document.getElementById("sig-asset").innerText = msg.asset;
+          document.getElementById("sig-time").innerText = msg.time;
+          document.getElementById("sig-price").innerText = msg.entry_price;
+          document.getElementById("sig-setup").innerText = msg.setup;
+          const dirEl = document.getElementById("sig-dir");
+          dirEl.innerText = msg.direction;
+          dirEl.className = msg.direction.includes("BUY") ? "text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500 animate-pulse" : "text-rose-400 font-bold px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500 animate-pulse";
+        }
+        if (msg.type === "SIGNAL_RESULT") {
+          document.getElementById("stat-wins").innerText = msg.wins;
+          document.getElementById("stat-losses").innerText = msg.losses;
+          document.getElementById("stat-winrate").innerText = msg.win_rate;
+        }
+      };
+    });
+  </script>
+</body>
+</html>
