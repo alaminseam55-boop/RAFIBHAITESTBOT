@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RAFI BHAI AI BOT — REAL MARKET</title>
+  <title>RAFI BHAI REAL AI BOT</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -37,7 +37,7 @@
         </div>
         <div id="chart-price" class="font-mono text-emerald-400 font-black text-sm">1.15918</div>
       </div>
-      <div id="tv-chart" style="width: 100%; height: 185px;"></div>
+      <div id="tv-chart" style="width: 100%; height: 210px;"></div>
     </div>
 
     <div id="sig-card" class="glass-card p-3.5 flex flex-col gap-2 border border-slate-700/60 text-xs font-mono">
@@ -64,47 +64,63 @@
     window.addEventListener("DOMContentLoaded", () => {
       const chartContainer = document.getElementById("tv-chart");
       const chart = LightweightCharts.createChart(chartContainer, {
-        width: chartContainer.clientWidth || 340, height: 185,
+        width: chartContainer.clientWidth || 340, height: 210,
         layout: { background: { color: "#0e1420" }, textColor: "#8b949e" },
         grid: { vertLines: { color: "#1a2234" }, horzLines: { color: "#1a2234" } },
         timeScale: { timeVisible: true, secondsVisible: true, borderVisible: false },
         rightPriceScale: { borderVisible: false }
       });
-      const candleSeries = chart.addCandlestickSeries({ upColor: "#00E676", downColor: "#FF1744", borderVisible: false, wickUpColor: "#00E676", wickDownColor: "#FF1744" });
-      window.addEventListener("resize", () => chart.resize(chartContainer.clientWidth, 185));
+      const candleSeries = chart.addCandlestickSeries({
+        upColor: "#00E676", downColor: "#FF1744", borderVisible: false,
+        wickUpColor: "#00E676", wickDownColor: "#FF1744"
+      });
+      window.addEventListener("resize", () => chart.resize(chartContainer.clientWidth, 210));
 
-      const wsUrl = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
-      const ws = new WebSocket(wsUrl);
+      function connectWebSocket() {
+        const wsUrl = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
+        const ws = new WebSocket(wsUrl);
 
-      ws.onmessage = (e) => {
-        const msg = JSON.parse(e.data);
-        if (msg.type === "INIT") {
-          if (msg.history) candleSeries.setData(msg.history);
-          chart.timeScale().fitContent();
-          if (msg.wins !== undefined) document.getElementById("stat-wins").innerText = msg.wins;
-          if (msg.losses !== undefined) document.getElementById("stat-losses").innerText = msg.losses;
-          if (msg.win_rate !== undefined) document.getElementById("stat-winrate").innerText = msg.win_rate;
-        }
-        if (msg.type === "TICK") {
-          document.getElementById("chart-price").innerText = msg.price.toFixed(5);
-          if (msg.candle) candleSeries.update(msg.candle);
-        }
-        if (msg.type === "NEW_SIGNAL") {
-          document.getElementById("sig-asset").innerText = msg.asset;
-          document.getElementById("sig-time").innerText = msg.time;
-          document.getElementById("sig-price").innerText = msg.entry_price;
-          document.getElementById("sig-setup").innerText = msg.setup;
-          if (msg.structure) document.getElementById("market-struct").innerText = "STRUCTURE: " + msg.structure;
-          const dirEl = document.getElementById("sig-dir");
-          dirEl.innerText = msg.direction;
-          dirEl.className = msg.direction.includes("BUY") ? "text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500 animate-pulse" : "text-rose-400 font-bold px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500 animate-pulse";
-        }
-        if (msg.type === "SIGNAL_RESULT") {
-          document.getElementById("stat-wins").innerText = msg.wins;
-          document.getElementById("stat-losses").innerText = msg.losses;
-          document.getElementById("stat-winrate").innerText = msg.win_rate;
-        }
-      };
+        ws.onopen = () => console.log("Connected to Server!");
+
+        ws.onmessage = (e) => {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "INIT") {
+            if (msg.history && msg.history.length > 0) {
+              candleSeries.setData(msg.history);
+              chart.timeScale().fitContent();
+            }
+            if (msg.wins !== undefined) document.getElementById("stat-wins").innerText = msg.wins;
+            if (msg.losses !== undefined) document.getElementById("stat-losses").innerText = msg.losses;
+            if (msg.win_rate !== undefined) document.getElementById("stat-winrate").innerText = msg.win_rate;
+          }
+          if (msg.type === "TICK") {
+            document.getElementById("chart-price").innerText = msg.price.toFixed(5);
+            if (msg.candle) candleSeries.update(msg.candle);
+          }
+          if (msg.type === "NEW_SIGNAL") {
+            document.getElementById("sig-asset").innerText = msg.asset;
+            document.getElementById("sig-time").innerText = msg.time;
+            document.getElementById("sig-price").innerText = msg.entry_price;
+            document.getElementById("sig-setup").innerText = msg.setup;
+            if (msg.structure) document.getElementById("market-struct").innerText = "STRUCTURE: " + msg.structure;
+            const dirEl = document.getElementById("sig-dir");
+            dirEl.innerText = msg.direction;
+            dirEl.className = msg.direction.includes("BUY") ? "text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500 animate-pulse" : "text-rose-400 font-bold px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500 animate-pulse";
+          }
+          if (msg.type === "SIGNAL_RESULT") {
+            document.getElementById("stat-wins").innerText = msg.wins;
+            document.getElementById("stat-losses").innerText = msg.losses;
+            document.getElementById("stat-winrate").innerText = msg.win_rate;
+          }
+        };
+
+        ws.onclose = () => {
+          console.log("WebSocket Disconnected. Reconnecting in 2s...");
+          setTimeout(connectWebSocket, 2000);
+        };
+      }
+
+      connectWebSocket();
     });
   </script>
 </body>
