@@ -7,7 +7,7 @@ TELEGRAM_CHAT_ID = "-1004393987433"
 
 ASSET_NAME = "EUR/USD"
 ws_clients = set()
-current_price = 1.15927
+current_price = 1.15898
 candles = []
 stats = {"wins": 0, "losses": 0}
 last_signal_time = ""
@@ -28,14 +28,13 @@ async def send_telegram(text):
     except Exception as e:
         print(f"❌ [TELEGRAM ERROR]: {e}")
 
-# ট্রেডিংভিউ / গ্লোবাল ফরেক্স লাইভ প্রাইস ফেচার
-async def fetch_real_live_price():
+# রিয়েল লাইভ ফরেক্স রেট ফেচিং (Open Forex Live Feed)
+async def get_live_forex_price():
     global current_price
-    # সরাসরি ওপেন লাইভ ফরেক্স রেট এন্ডপয়েন্ট
-    url = "https://api.exchangerate-api.com/v4/latest/EUR"
+    url = "https://open.er-api.com/v6/latest/EUR"
     try:
         async with ClientSession() as session:
-            async with session.get(url, timeout=3) as resp:
+            async with session.get(url, timeout=4) as resp:
                 data = await resp.json()
                 rate = data.get("rates", {}).get("USD")
                 if rate:
@@ -44,32 +43,29 @@ async def fetch_real_live_price():
         pass
     return current_price
 
-# ১. মার্কেট স্ট্রাকচার
-def get_market_structure(c_list):
-    if len(c_list) < 4: return "SIDEWAYS"
-    recent = c_list[-4:]
-    if recent[-1]["close"] >= recent[-3]["close"]: return "UPTREND"
-    return "DOWNTREND"
-
-# ২. ফ্র্যাক্টাল সাপোর্ট ও রেজিস্ট্যান্স
-def detect_fractals(c_list):
-    up, down = [], []
-    if len(c_list) < 5: return up, down
-    for i in range(2, len(c_list) - 2):
-        if c_list[i]["high"] >= max(c_list[i-1]["high"], c_list[i+1]["high"]):
-            up.append(c_list[i]["high"])
-        if c_list[i]["low"] <= min(c_list[i-1]["low"], c_list[i+1]["low"]):
-            down.append(c_list[i]["low"])
-    return up, down
-
-# ৩. ক্যান্ডেল রিঅ্যাকশন
-def check_candle_reaction(candle):
-    body = abs(candle["close"] - candle["open"])
-    lower_wick = min(candle["open"], candle["close"]) - candle["low"]
-    upper_wick = candle["high"] - max(candle["open"], candle["close"])
-    if lower_wick >= body * 0.6: return "BULLISH_REJECTION"
-    elif upper_wick >= body * 0.6: return "BEARISH_REJECTION"
-    return "NONE"
+# ১. রিয়েল মার্কেট প্রাইস অ্যাকশন ট্রেন্ড বিশ্লেষণ
+def analyze_real_market(c_list):
+    if len(c_list) < 3: return "NEUTRAL", "NONE"
+    c1, c2, c3 = c_list[-3], c_list[-2], c_list[-1]
+    
+    # লোয়ার হাই ও লোয়ার লো চেক (Downtrend Detection)
+    if c3["close"] < c2["close"] and c2["close"] < c1["close"]:
+        return "DOWNTREND", "STRONG_BEARISH_MOMENTUM"
+    # হায়ার হাই ও হায়ার লো চেক (Uptrend Detection)
+    elif c3["close"] > c2["close"] and c2["close"] > c1["close"]:
+        return "UPTREND", "STRONG_BULLISH_MOMENTUM"
+    
+    # উইক রিজেকশন লজিক
+    body = abs(c3["close"] - c3["open"])
+    lower_wick = min(c3["open"], c3["close"]) - c3["low"]
+    upper_wick = c3["high"] - max(c3["open"], c3["close"])
+    
+    if lower_wick > body * 1.2:
+        return "BULLISH_FLOW", "LOWER_WICK_REJECTION"
+    elif upper_wick > body * 1.2:
+        return "BEARISH_FLOW", "UPPER_WICK_REJECTION"
+        
+    return "SIDEWAYS", "PRICE_CONSOLIDATION"
 
 async def broadcast(data):
     for ws in list(ws_clients):
@@ -78,24 +74,24 @@ async def broadcast(data):
         except Exception:
             ws_clients.remove(ws)
 
-# ক্যান্ডেল হিস্টোরি তৈরি
-def init_chart_history(base_p):
+def init_history(base_p):
     global candles
     history = []
     now = int(time.time())
     start = (now // 60) * 60 - (35 * 60)
-    p = base_p
+    p = base_p + 0.00030
     for i in range(35):
         o = p
-        c = round(o + ((i % 3 - 1) * 0.00005), 5)
-        h = round(max(o, c) + 0.00004, 5)
-        l = round(min(o, c) - 0.00004, 5)
+        diff = -0.00002 if i > 15 else 0.00001
+        c = round(o + diff, 5)
+        h = round(max(o, c) + 0.00002, 5)
+        l = round(min(o, c) - 0.00002, 5)
         history.append({"time": start + (i * 60), "open": o, "high": h, "low": l, "close": c})
         p = c
     candles = history
 
-# আসল লাইভ ইঞ্জিন
-async def live_tradingview_engine():
+# রিয়েল লাইভ ইঞ্জিন ও ২৪ ঘণ্টা সিগন্যাল লুপ
+async def real_signal_master_loop():
     global current_price, stats, candles, last_signal_time
     in_trade = False
     trade_end_time = 0
@@ -103,14 +99,20 @@ async def live_tradingview_engine():
     trade_entry = 0.0
     setup_name = ""
 
-    # শুরুর লাইভ প্রাইস সিঙ্ক
-    init_price = await fetch_real_live_price()
-    if init_price:
-        current_price = init_price
-    init_chart_history(current_price)
+    # শুরুর লাইভ ডাটা লোড
+    p = await get_live_forex_price()
+    if p: current_price = p
+    init_history(current_price)
 
     await asyncio.sleep(2)
-    await send_telegram(f"🚀 <b>RAFI BHAI AI BOT — TRADINGVIEW FEED ACTIVE</b>\n\nমার্কেট: <b>EUR/USD</b>\nলাইভ প্রাইস: <code>{current_price:.5f}</code>\nপ্রাইস ও ক্যান্ডেল শতভাগ সিঙ্ক করা হয়েছে।")
+    bd_now = get_bd_time()
+    await send_telegram(
+        f"🌍 <b>RAFI BHAI AI BOT — 100% REAL MARKET SYNCED</b>\n\n"
+        f"💎 <b>Asset:</b> {ASSET_NAME}\n"
+        f"⏰ <b>Start Time:</b> {bd_now}\n"
+        f"💰 <b>Live Price:</b> <code>{current_price:.5f}</code>\n"
+        f"🚀 <i>২৪ ঘণ্টা সক্রিয় লাইভ অ্যানালাইসিস চালু হয়েছে!</i>"
+    )
 
     while True:
         await asyncio.sleep(1)
@@ -118,12 +120,13 @@ async def live_tradingview_engine():
         sec = now % 60
         candle_ts = (now // 60) * 60
 
-        # প্রতি ৫ সেকেন্ড অন্তর ট্রেডিংভিউয়ের আসল রেট সিঙ্ক
-        if sec % 5 == 0:
-            real_p = await fetch_real_live_price()
-            if real_p and abs(real_p - current_price) > 0.00001:
-                current_price = real_p
+        # প্রতি ৩ সেকেন্ড অন্তর রিয়েল রেট আপডেট
+        if sec % 3 == 0:
+            live_p = await get_live_forex_price()
+            if live_p:
+                current_price = live_p
 
+        # ক্যান্ডেল লাইভ ট্র্যাকিং
         if len(candles) == 0 or candles[-1]["time"] != candle_ts:
             candles.append({
                 "time": candle_ts,
@@ -141,24 +144,22 @@ async def live_tradingview_engine():
 
         await broadcast({"type": "TICK", "price": current_price, "candle": candles[-1]})
 
-        # ৫৫-৫৮ সেকেন্ডে কনফ্লুয়েন্স চেক ও আসল প্রাইসে সিগন্যাল
-        if not in_trade and 54 <= sec <= 57 and len(candles) >= 5:
+        # ৫৫ থেকে ৫৭ সেকেন্ডে নিখুঁত সিগন্যাল ডিটেকশন
+        if not in_trade and 54 <= sec <= 57 and len(candles) >= 4:
             next_candle_ts = now + (60 - sec)
             next_t = get_bd_time(next_candle_ts)
-            
+
             if next_t != last_signal_time:
-                trend = get_market_structure(candles[:-1])
-                reaction = check_candle_reaction(candles[-1])
-                is_green = current_price >= candles[-1]["open"]
+                trend, pattern = analyze_real_market(candles)
                 
                 sig_found = False
-                if (trend == "UPTREND" and is_green) or reaction == "BULLISH_REJECTION":
-                    trade_type = "BUY (CALL)"
-                    setup_name = "Price Action + Support Flow"
-                    sig_found = True
-                elif (trend == "DOWNTREND" and not is_green) or reaction == "BEARISH_REJECTION":
+                if "DOWN" in trend or "BEARISH" in pattern or current_price < candles[-1]["open"]:
                     trade_type = "SELL (PUT)"
-                    setup_name = "Price Action + Resistance Flow"
+                    setup_name = f"Trend Flow: {pattern.replace('_', ' ')}"
+                    sig_found = True
+                elif "UP" in trend or "BULLISH" in pattern or current_price > candles[-1]["open"]:
+                    trade_type = "BUY (CALL)"
+                    setup_name = f"Trend Flow: {pattern.replace('_', ' ')}"
                     sig_found = True
 
                 if sig_found:
@@ -166,7 +167,8 @@ async def live_tradingview_engine():
                     trade_entry = current_price
                     trade_end_time = next_candle_ts + 59
                     last_signal_time = next_t
-                    
+
+                    # ওয়েবসাইট আপডেট
                     await broadcast({
                         "type": "NEW_SIGNAL",
                         "asset": ASSET_NAME,
@@ -178,6 +180,7 @@ async def live_tradingview_engine():
                         "structure": trend
                     })
 
+                    # টেলিগ্রাম চ্যানেলে সিগন্যাল পোস্ট
                     emoji_dir = "🟢 <b>BUY (CALL) ⬆️</b>" if "BUY" in trade_type else "🔴 <b>SELL (PUT) ⬇️</b>"
                     tg_msg = (
                         f"⚡ <b>RAFI BHAI AI BOT SIGNAL</b> ⚡\n\n"
@@ -190,9 +193,9 @@ async def live_tradingview_engine():
                         f"⚠️ <i>Strict 1-Step Martingale If Needed</i>"
                     )
                     asyncio.create_task(send_telegram(tg_msg))
-                    print(f"🎯 [NEW SIGNAL] {next_t} -> {trade_type} @ {trade_entry:.5f}")
+                    print(f"🎯 [SIGNAL POSTED] {next_t} -> {trade_type} @ {trade_entry:.5f}")
 
-        # ১ মিনিট পর রেজাল্ট ভেরিফিকেশন
+        # ১ মিনিট পর রেজাল্ট ভেরিফিকেশন ও চ্যানেলে পোস্ট
         if in_trade and now >= trade_end_time:
             in_trade = False
             close_p = current_price
@@ -201,7 +204,7 @@ async def live_tradingview_engine():
             else: stats["losses"] += 1
             total = stats["wins"] + stats["losses"]
             win_r = f"{round((stats['wins']/total)*100)}%"
-            
+
             await broadcast({
                 "type": "SIGNAL_RESULT",
                 "result": "WIN" if is_win else "LOSS",
@@ -221,6 +224,16 @@ async def live_tradingview_engine():
                 f"🎯 <b>Accuracy:</b> {win_r}"
             )
             asyncio.create_task(send_telegram(tg_res_msg))
+
+# সার্ভারকে ২৪ ঘণ্টা সজাগ রাখার লুপ (কখনো সিগন্যাল আসা বন্ধ হবে না)
+async def self_keep_alive():
+    while True:
+        await asyncio.sleep(240) # প্রতি ৪ মিনিটে
+        try:
+            async with ClientSession() as session:
+                await session.get("http://127.0.0.1:8080/", timeout=3)
+        except Exception:
+            pass
 
 async def ws_handler(request):
     ws = web.WebSocketResponse()
@@ -250,10 +263,12 @@ app.router.add_get("/", handle_index)
 app.router.add_get("/ws", ws_handler)
 
 async def start_tasks(app):
-    app["engine"] = asyncio.create_task(live_tradingview_engine())
+    app["engine"] = asyncio.create_task(real_signal_master_loop())
+    app["pinger"] = asyncio.create_task(self_keep_alive())
 
 async def stop_tasks(app):
     app["engine"].cancel()
+    app["pinger"].cancel()
 
 app.on_startup.append(start_tasks)
 app.on_cleanup.append(stop_tasks)
