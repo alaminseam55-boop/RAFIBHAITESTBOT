@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RAFI BHAI AI BOT PRO</title>
+  <title>RAFI BHAI AI BOT — REAL MARKET</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -17,11 +17,11 @@
     <header class="glass-card flex items-center justify-between p-3 border-emerald-500/20">
       <div class="flex items-center gap-2">
         <div class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400">
-          <i class="fa-solid fa-robot text-base"></i>
+          <i class="fa-solid fa-earth-americas text-base"></i>
         </div>
         <div>
-          <h1 class="font-black text-sm tracking-wider text-emerald-400">RAFI BHAI <span class="text-amber-400">AI BOT</span></h1>
-          <p class="text-[9px] text-slate-400">4-Confluence Strict Price Action</p>
+          <h1 class="font-black text-sm tracking-wider text-emerald-400">RAFI BHAI <span class="text-amber-400">REAL AI BOT</span></h1>
+          <p class="text-[9px] text-slate-400">Global Forex Real-Market Live Feed</p>
         </div>
       </div>
       <span class="text-xs bg-emerald-950 text-emerald-400 border border-emerald-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 font-bold">
@@ -31,21 +31,24 @@
 
     <div class="glass-card p-2.5 flex flex-col gap-1.5">
       <div class="flex justify-between items-center text-xs px-1">
-        <span class="font-bold text-emerald-400">USD/BDT (OTC)</span>
-        <div id="chart-price" class="font-mono text-emerald-400 font-black text-sm">122.278</div>
+        <div class="flex items-center gap-1.5">
+          <span class="font-bold text-emerald-400">EUR/USD (REAL)</span>
+          <span class="text-[9px] bg-amber-500/10 text-amber-300 border border-amber-500/20 px-1 py-0.5 rounded font-mono" id="market-struct">STRUCTURE: SCANNING</span>
+        </div>
+        <div id="chart-price" class="font-mono text-emerald-400 font-black text-sm">1.15918</div>
       </div>
       <div id="tv-chart" style="width: 100%; height: 185px;"></div>
     </div>
 
     <div id="sig-card" class="glass-card p-3.5 flex flex-col gap-2 border border-slate-700/60 text-xs font-mono">
       <div class="text-center text-amber-300 font-black text-[12px] tracking-widest border-b border-slate-800 pb-1.5">
-        ⚡ RAFI BHAI PRO SIGNAL ⚡
+        ⚡ REAL MARKET SIGNAL ⚡
       </div>
       <div class="flex flex-col gap-1.5 text-slate-300 py-1">
-        <div class="flex items-center justify-between"><span class="text-slate-400">💎 ASSET</span><span class="text-white font-bold" id="sig-asset">USD/BDT (OTC)</span></div>
+        <div class="flex items-center justify-between"><span class="text-slate-400">💎 ASSET</span><span class="text-white font-bold" id="sig-asset">EUR/USD</span></div>
         <div class="flex items-center justify-between"><span class="text-slate-400">⏰ TIME</span><span class="text-white font-bold" id="sig-time">Scanning Confluence...</span></div>
         <div class="flex items-center justify-between"><span class="text-slate-400">🟢 DIRECTION</span><span class="text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30" id="sig-dir">SEARCHING...</span></div>
-        <div class="flex items-center justify-between"><span class="text-slate-400">💰 ENTRY PRICE</span><span class="text-amber-400 font-bold" id="sig-price">122.278</span></div>
+        <div class="flex items-center justify-between"><span class="text-slate-400">💰 ENTRY PRICE</span><span class="text-amber-400 font-bold" id="sig-price">1.15918</span></div>
         <div class="flex items-center justify-between"><span class="text-slate-400">🧩 SETUP</span><span class="text-slate-200 text-[10px] text-right font-sans" id="sig-setup">Market Structure + Fractal</span></div>
       </div>
     </div>
@@ -83,7 +86,7 @@
           if (msg.win_rate !== undefined) document.getElementById("stat-winrate").innerText = msg.win_rate;
         }
         if (msg.type === "TICK") {
-          document.getElementById("chart-price").innerText = msg.price.toFixed(4);
+          document.getElementById("chart-price").innerText = msg.price.toFixed(5);
           if (msg.candle) candleSeries.update(msg.candle);
         }
         if (msg.type === "NEW_SIGNAL") {
@@ -91,6 +94,7 @@
           document.getElementById("sig-time").innerText = msg.time;
           document.getElementById("sig-price").innerText = msg.entry_price;
           document.getElementById("sig-setup").innerText = msg.setup;
+          if (msg.structure) document.getElementById("market-struct").innerText = "STRUCTURE: " + msg.structure;
           const dirEl = document.getElementById("sig-dir");
           dirEl.innerText = msg.direction;
           dirEl.className = msg.direction.includes("BUY") ? "text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500 animate-pulse" : "text-rose-400 font-bold px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500 animate-pulse";
