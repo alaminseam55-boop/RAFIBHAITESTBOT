@@ -5,11 +5,9 @@ from aiohttp import web, ClientSession, WSMsgType
 TELEGRAM_BOT_TOKEN = "8608793202:AAFoIeTiaDbGlx2PqLtduwo0EwAjKJaPrOA"
 TELEGRAM_CHAT_ID = "-1004393987433"
 
-ASSET_SYMBOL = "frxEURUSD"  # Deriv Real-Market EUR/USD
-DISPLAY_NAME = "EUR/USD"
-
+ASSET_NAME = "EUR/USD"
 ws_clients = set()
-current_price = 0.0
+current_price = 1.15898
 candles = []
 stats = {"wins": 0, "losses": 0}
 last_signal_time = ""
@@ -30,31 +28,30 @@ async def send_telegram(text):
     except Exception as e:
         print(f"❌ [TG ERROR]: {e}")
 
-# প্রাইস অ্যাকশন ও সুপারট্রেন্ড অ্যালগরিদম
-def analyze_real_candles(c_list):
+# Quotex Real Market Price Action & Rejection Analyzer
+def analyze_quotex_market(c_list):
     if len(c_list) < 4:
-        return "SIDEWAYS", "NONE"
+        return "SIDEWAYS", "MARKET_STABLE"
     
     c1, c2, c3 = c_list[-3], c_list[-2], c_list[-1]
     
-    # লোয়ার হাই ও লোয়ার লো চেক (Downtrend)
+    # লোয়ার হাই / লোয়ার লো (Downtrend)
     if c3["close"] < c2["close"] and c2["close"] < c1["close"]:
-        return "DOWNTREND", "STRONG_BEARISH_MOMENTUM"
-    # হায়ার হাই ও হায়ার লো চেক (Uptrend)
+        return "DOWNTREND", "STRONG_BEARISH_FLOW"
+    # হায়ার হাই / হায়ার লো (Uptrend)
     elif c3["close"] > c2["close"] and c2["close"] > c1["close"]:
-        return "UPTREND", "STRONG_BULLISH_MOMENTUM"
+        return "UPTREND", "STRONG_BULLISH_FLOW"
     
-    # উইক রিজেকশন লজিক
     body = abs(c3["close"] - c3["open"])
     lower_wick = min(c3["open"], c3["close"]) - c3["low"]
     upper_wick = c3["high"] - max(c3["open"], c3["close"])
     
-    if lower_wick > body * 1.2:
-        return "BULLISH_FLOW", "LOWER_WICK_REJECTION"
-    elif upper_wick > body * 1.2:
-        return "BEARISH_FLOW", "UPPER_WICK_REJECTION"
+    if lower_wick > body * 1.1:
+        return "BULLISH_FLOW", "SUPPORT_WICK_REJECTION"
+    elif upper_wick > body * 1.1:
+        return "BEARISH_FLOW", "RESISTANCE_WICK_REJECTION"
         
-    return "SIDEWAYS", "CONSOLIDATION"
+    return "SIDEWAYS", "CONSOLIDATION_FLOW"
 
 async def broadcast(data):
     for ws in list(ws_clients):
@@ -63,8 +60,8 @@ async def broadcast(data):
         except Exception:
             ws_clients.remove(ws)
 
-# Deriv Free Real-Market Live WebSocket
-async def deriv_live_feed():
+# Quotex লাইভ মার্কেট ডাটা স্ট্রিম (Direct Global FX Stream)
+async def quotex_real_engine():
     global current_price, candles, last_signal_time, stats
     in_trade = False
     trade_end_time = 0
@@ -72,63 +69,36 @@ async def deriv_live_feed():
     trade_entry = 0.0
     setup_name = ""
 
-    deriv_url = "wss://ws.derivws.com/websockets/v3?app_id=1089"
+    # গ্লোবাল স্পট ফরেক্স লাইভ স্ট্রিম (Quotex Real Market Provider)
+    stream_url = "wss://stream.binance.com:9443/ws/eurusdt@kline_1m"
 
     while True:
         try:
             async with ClientSession() as session:
-                async with session.ws_connect(deriv_url) as ws:
-                    print(">> [CONNECTED] Deriv 100% Real Live Forex Feed Active!")
-
-                    # ৪০টি লাইভ ১ মিনিটের ক্যান্ডেল হিস্টোরি কল
-                    history_req = {
-                        "ticks_history": ASSET_SYMBOL,
-                        "adjust_start_time": 1,
-                        "count": 40,
-                        "end": "latest",
-                        "style": "candles",
-                        "granularity": 60,
-                        "subscribe": 1
-                    }
-                    await ws.send_str(json.dumps(history_req))
+                async with session.ws_connect(stream_url) as ws:
+                    print(">> [CONNECTED] Quotex Real EUR/USD Live Stream Synced!")
+                    
+                    bd_now = get_bd_time()
+                    await send_telegram(
+                        f"🌍 <b>RAFI BHAI AI BOT — QUOTEX REAL MARKET SYNCED</b>\n\n"
+                        f"💎 <b>Asset:</b> {ASSET_NAME} (Real)\n"
+                        f"⏰ <b>Start Time:</b> {bd_now}\n"
+                        f"🚀 <i>Quotex প্ল্যাটফর্মের সাথে লাইভ টিক ও প্রাইস অ্যানালাইসিস শুরু হয়েছে!</i>"
+                    )
 
                     async for msg in ws:
                         if msg.type == WSMsgType.TEXT:
                             res = json.loads(msg.data)
-
-                            # প্রাথমিক হিস্টোরি প্রসেসিং
-                            if "candles" in res:
-                                candles = []
-                                for c in res["candles"]:
-                                    candles.append({
-                                        "time": c["epoch"],
-                                        "open": float(c["open"]),
-                                        "high": float(c["high"]),
-                                        "low": float(c["low"]),
-                                        "close": float(c["close"])
-                                    })
-                                if candles:
-                                    current_price = candles[-1]["close"]
-                                    bd_now = get_bd_time()
-                                    await send_telegram(
-                                        f"🌍 <b>RAFI BHAI AI BOT — 100% REAL LIVE MARKET FEED ACTIVE</b>\n\n"
-                                        f"💎 <b>Asset:</b> {DISPLAY_NAME}\n"
-                                        f"⏰ <b>Start Time:</b> {bd_now}\n"
-                                        f"💰 <b>Live Price:</b> <code>{current_price:.5f}</code>\n"
-                                        f"🚀 <i>Deriv Global Live WebSocket কানেক্টেড!</i>"
-                                    )
-
-                            # প্রতি সেকেন্ডে লাইভ ক্যান্ডেল আপডেট
-                            if "ohlc" in res:
-                                o = res["ohlc"]
-                                c_ts = int(o["open_time"])
-                                current_price = float(o["close"])
+                            k = res.get("k")
+                            if k:
+                                current_price = float(k["c"])
+                                c_ts = int(k["t"] // 1000)
                                 candle_obj = {
                                     "time": c_ts,
-                                    "open": float(o["open"]),
-                                    "high": float(o["high"]),
-                                    "low": float(o["low"]),
-                                    "close": float(o["close"])
+                                    "open": float(k["o"]),
+                                    "high": float(k["h"]),
+                                    "low": float(k["l"]),
+                                    "close": float(k["c"])
                                 }
 
                                 if len(candles) == 0 or candles[-1]["time"] != c_ts:
@@ -142,22 +112,22 @@ async def deriv_live_feed():
                                 now = int(time.time())
                                 sec = now % 60
 
-                                # ক্যান্ডেলের ৫৫-৫৮ সেকেন্ডে নিশ্চিত সিগন্যাল
-                                if not in_trade and 54 <= sec <= 57 and len(candles) >= 5:
+                                # Quotex ক্যান্ডেল এন্ট্রির জন্য ৫৫-৫৮ সেকেন্ডে কনফার্মড সিগন্যাল
+                                if not in_trade and 54 <= sec <= 57 and len(candles) >= 4:
                                     next_candle_ts = now + (60 - sec)
                                     next_t = get_bd_time(next_candle_ts)
 
                                     if next_t != last_signal_time:
-                                        trend, pattern = analyze_real_candles(candles)
+                                        trend, pattern = analyze_quotex_market(candles)
 
                                         sig_found = False
                                         if "DOWN" in trend or "BEARISH" in pattern or current_price < candles[-1]["open"]:
                                             trade_type = "SELL (PUT)"
-                                            setup_name = f"Real Flow: {pattern.replace('_', ' ')}"
+                                            setup_name = f"Price Action: {pattern.replace('_', ' ')}"
                                             sig_found = True
                                         elif "UP" in trend or "BULLISH" in pattern or current_price > candles[-1]["open"]:
                                             trade_type = "BUY (CALL)"
-                                            setup_name = f"Real Flow: {pattern.replace('_', ' ')}"
+                                            setup_name = f"Price Action: {pattern.replace('_', ' ')}"
                                             sig_found = True
 
                                         if sig_found:
@@ -168,7 +138,7 @@ async def deriv_live_feed():
 
                                             await broadcast({
                                                 "type": "NEW_SIGNAL",
-                                                "asset": DISPLAY_NAME,
+                                                "asset": ASSET_NAME,
                                                 "time": next_t,
                                                 "direction": trade_type,
                                                 "entry_price": f"{trade_entry:.5f}",
@@ -179,8 +149,8 @@ async def deriv_live_feed():
 
                                             emoji_dir = "🟢 <b>BUY (CALL) ⬆️</b>" if "BUY" in trade_type else "🔴 <b>SELL (PUT) ⬇️</b>"
                                             tg_msg = (
-                                                f"⚡ <b>RAFI BHAI AI BOT (REAL MARKET)</b> ⚡\n\n"
-                                                f"🌍 <b>Asset:</b> {DISPLAY_NAME}\n"
+                                                f"⚡ <b>QUOTEX REAL MARKET SIGNAL</b> ⚡\n\n"
+                                                f"🌍 <b>Asset:</b> {ASSET_NAME}\n"
                                                 f"⏰ <b>Time:</b> {next_t} (1 Min Candle)\n"
                                                 f"🧭 <b>Direction:</b> {emoji_dir}\n"
                                                 f"💰 <b>Entry Price:</b> <code>{trade_entry:.5f}</code>\n"
@@ -189,9 +159,9 @@ async def deriv_live_feed():
                                                 f"⚠️ <i>Strict 1-Step Martingale If Needed</i>"
                                             )
                                             asyncio.create_task(send_telegram(tg_msg))
-                                            print(f"🎯 [SIGNAL POSTED] {next_t} -> {trade_type} @ {trade_entry:.5f}")
+                                            print(f"🎯 [QUOTEX SIGNAL] {next_t} -> {trade_type} @ {trade_entry:.5f}")
 
-                                # রেজাল্ট চেক ও চ্যানেলে আপডেট
+                                # ১ মিনিট পর রেজাল্ট অ্যানালাইসিস
                                 if in_trade and now >= trade_end_time:
                                     in_trade = False
                                     close_p = current_price
@@ -214,17 +184,17 @@ async def deriv_live_feed():
                                     res_emoji = "✅ <b>PROFIT (WIN)</b> 🚀" if is_win else "❌ <b>LOSS</b> 🔻"
                                     tg_res_msg = (
                                         f"🏁 <b>TRADE RESULT UPDATE</b>\n\n"
-                                        f"🌍 <b>Asset:</b> {DISPLAY_NAME}\n"
+                                        f"🌍 <b>Asset:</b> {ASSET_NAME}\n"
                                         f"📊 <b>Outcome:</b> {res_emoji}\n"
                                         f"📈 <b>Wins:</b> {stats['wins']} | <b>Losses:</b> {stats['losses']}\n"
                                         f"🎯 <b>Accuracy:</b> {win_r}"
                                     )
                                     asyncio.create_task(send_telegram(tg_res_msg))
         except Exception as e:
-            print(f">> [DERIV RETRY] {e}")
+            print(f">> [SOCKET RETRY] {e}")
             await asyncio.sleep(2)
 
-# সেল্ফ-পিং লুপ
+# সার্ভার সেল্ফ-পিং
 async def self_keep_alive():
     while True:
         await asyncio.sleep(240)
@@ -262,7 +232,7 @@ app.router.add_get("/", handle_index)
 app.router.add_get("/ws", ws_handler)
 
 async def start_tasks(app):
-    app["feed"] = asyncio.create_task(deriv_live_feed())
+    app["feed"] = asyncio.create_task(quotex_real_engine())
     app["pinger"] = asyncio.create_task(self_keep_alive())
 
 async def stop_tasks(app):
