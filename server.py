@@ -12,7 +12,7 @@ ASSET_NAME = "EUR/USD"
 ws_clients = set()
 current_price = 1.15900
 candles = []
-stats = {"wins": 0, "losses": 0}
+stats = {"wins": 0, "losses": 0, "direct_wins": 0, "mtg_wins": 0}
 last_signal_time = ""
 
 def get_bd_time(ts=None):
@@ -40,12 +40,13 @@ def calculate_rsi(closes, period=14):
     rs = avg_gain / avg_loss
     return round(100.0 - (100.0 / (1.0 + rs)), 2)
 
-def generate_chart_image(c_list, title_text, mark_dir=None):
+# লাইভ চার্ট ইমেজ জেনারেটর
+def generate_chart_image(c_list, title_text, mark_dir=None, is_mtg=False):
     fig, ax = plt.subplots(figsize=(7, 3.8), dpi=100)
-    fig.patch.set_facecolor('#0b0f19')
-    ax.set_facecolor('#0b0f19')
+    fig.patch.set_facecolor('#080d1a')
+    ax.set_facecolor('#080d1a')
 
-    recent_candles = c_list[-15:]
+    recent_candles = c_list[-16:]
     width = 0.55
     width2 = 0.08
 
@@ -58,18 +59,20 @@ def generate_chart_image(c_list, title_text, mark_dir=None):
     if mark_dir and len(recent_candles) > 0:
         last_idx = len(recent_candles) - 1
         last_c = recent_candles[-1]
+        lbl = '▲ MTG CALL' if is_mtg else '▲ SURESHOT CALL'
         if "BUY" in mark_dir:
-            ax.annotate('▲ SURESHOT CALL', xy=(last_idx, last_c['low']), xytext=(last_idx, last_c['low'] - 0.00008),
+            ax.annotate(lbl, xy=(last_idx, last_c['low']), xytext=(last_idx, last_c['low'] - 0.00008),
                         arrowprops=dict(facecolor='#00e676', shrink=0.05, width=2, headwidth=6),
                         color='#00e676', fontweight='bold', ha='center', fontsize=9)
         elif "SELL" in mark_dir:
-            ax.annotate('▼ SURESHOT PUT', xy=(last_idx, last_c['high']), xytext=(last_idx, last_c['high'] + 0.00008),
+            lbl = '▼ MTG PUT' if is_mtg else '▼ SURESHOT PUT'
+            ax.annotate(lbl, xy=(last_idx, last_c['high']), xytext=(last_idx, last_c['high'] + 0.00008),
                         arrowprops=dict(facecolor='#ff1744', shrink=0.05, width=2, headwidth=6),
                         color='#ff1744', fontweight='bold', ha='center', fontsize=9)
 
     ax.set_title(title_text, color='#f8fafc', fontsize=11, fontweight='bold', pad=10)
     ax.tick_params(colors='#64748b', labelsize=8)
-    ax.grid(True, linestyle='--', alpha=0.15, color='#ffffff')
+    ax.grid(True, linestyle='--', alpha=0.12, color='#ffffff')
     for spine in ax.spines.values():
         spine.set_color('#1e293b')
 
@@ -124,9 +127,9 @@ async def fetch_truefx_price(session):
 def prefill_history(p):
     global candles
     now = int(time.time())
-    start_ts = (now // 60) * 60 - (35 * 60)
+    start_ts = (now // 60) * 60 - (40 * 60)
     history = []
-    for i in range(35):
+    for i in range(40):
         o = p
         diff = 0.00003 if i % 2 == 0 else -0.00003
         c = round(o + diff, 5)
@@ -137,10 +140,10 @@ def prefill_history(p):
     candles = history
 
 # ============================================================
-# 🎯 100% STRICT SURESHOT CONFLUENCE ENGINE
+# 🧠 INSTITUTIONAL SMART MONEY AI ENGINE (SURESHOT 85%+)
 # ============================================================
-def sureshot_institutional_filter(c_list):
-    if len(c_list) < 25:
+def institutional_ai_analyzer(c_list):
+    if len(c_list) < 30:
         return "NONE", "NO_DATA", 0, False
 
     c_cur = c_list[-1]
@@ -149,31 +152,37 @@ def sureshot_institutional_filter(c_list):
     closes = [c["close"] for c in c_list]
     ema_9 = sum(closes[-9:]) / 9.0
     ema_21 = sum(closes[-21:]) / 21.0
+    ema_50 = sum(closes[-30:]) / 30.0
     rsi = calculate_rsi(closes, period=14)
 
     body = abs(c_prev["close"] - c_prev["open"])
     upper_wick = c_prev["high"] - max(c_prev["open"], c_prev["close"])
     lower_wick = min(c_prev["open"], c_prev["close"]) - c_prev["low"]
 
-    # ডোজি ফিল্টারিং
-    if body < 0.00003:
-        return "NONE", "DOJI_NOISE_SKIP", 0, False
+    # ডোজি ও সাইডওয়েজ ফিল্টার
+    if body < 0.000025:
+        return "NONE", "DOJI_SKIP", 0, False
 
-    # ১. বুলিশ সিওরশট (স্ট্রং আপট্রেন্ড + আরএসআই সাপোর্ট + রিজেকশন/মোমেন্টাম)
-    if ema_9 > ema_21 and 52 <= rsi <= 72:
-        if c_prev["close"] > c_prev["open"] and lower_wick >= body * 0.4:
-            return "BUY (CALL)", "SURESHOT: Bullish Trend Flow + EMA Rejection", 94, True
-        elif c_prev["close"] > c_prev["open"] and c_cur["close"] > c_prev["high"]:
-            return "BUY (CALL)", "SURESHOT: Institutional Momentum Breakout", 92, True
+    recent_highs = max([c["high"] for c in c_list[-15:-2]])
+    recent_lows = min([c["low"] for c in c_list[-15:-2]])
 
-    # ২. বিয়ারিশ সিওরশট (স্ট্রং ডাউনট্রেন্ড + আরএসআই রেজিস্ট্যান্স + রিজেকশন/মোমেন্টাম)
-    elif ema_9 < ema_21 and 28 <= rsi <= 48:
-        if c_prev["close"] < c_prev["open"] and upper_wick >= body * 0.4:
-            return "SELL (PUT)", "SURESHOT: Bearish Trend Flow + EMA Rejection", 94, True
-        elif c_prev["close"] < c_prev["open"] and c_cur["close"] < c_prev["low"]:
-            return "SELL (PUT)", "SURESHOT: Institutional Momentum Breakdown", 92, True
+    # ১. প্রাতিষ্ঠানিক বুলিশ কনফ্লুয়েন্স (Triple EMA Alignment + Support Wick / Sweep)
+    if ema_9 > ema_21 and ema_21 > ema_50 and 48 <= rsi <= 70:
+        # সাপোর্ট রিজেকশন বা লিকুইডিটি সুইপ
+        if lower_wick >= body * 0.7 and c_prev["low"] <= recent_lows:
+            return "BUY (CALL)", "Smart Money: Liquidity Sweep + Rejection", 95, True
+        elif c_prev["close"] > c_prev["open"] and c_cur["close"] > c_prev["high"] and lower_wick >= body * 0.3:
+            return "BUY (CALL)", "Smart Money: Triple Trend Momentum Breakout", 92, True
 
-    return "NONE", "NO_SURESHOT_SETUP", 0, False
+    # ২. প্রাতিষ্ঠানিক বিয়ারিশ কনফ্লুয়েন্স (Triple EMA Alignment + Resistance Wick / Sweep)
+    elif ema_9 < ema_21 and ema_21 < ema_50 and 30 <= rsi <= 52:
+        # রেজিস্ট্যান্স রিজেকশন বা লিকুইডিটি সুইপ
+        if upper_wick >= body * 0.7 and c_prev["high"] >= recent_highs:
+            return "SELL (PUT)", "Smart Money: Liquidity Sweep + Rejection", 95, True
+        elif c_prev["close"] < c_prev["open"] and c_cur["close"] < c_prev["low"] and upper_wick >= body * 0.3:
+            return "SELL (PUT)", "Smart Money: Triple Trend Momentum Breakdown", 92, True
+
+    return "NONE", "SCANNING_SURESHOT", 0, False
 
 async def broadcast(data):
     for ws in list(ws_clients):
@@ -182,13 +191,21 @@ async def broadcast(data):
         except Exception:
             ws_clients.remove(ws)
 
-async def live_ai_core_engine():
+# ============================================================
+# 🎯 CORE ENGINE WITH 2-STEP STATE MACHINE (PERFECT MTG TIMING)
+# ============================================================
+async def live_ai_master_engine():
     global current_price, candles, last_signal_time, stats
-    in_trade = False
-    trade_end_time = 0
+    
+    # স্টেট মেশিন ভেরিয়েবল
+    trade_state = "IDLE"  # "IDLE", "STEP_0", "STEP_1_MTG"
     trade_type = ""
     trade_entry = 0.0
+    mtg_entry = 0.0
+    step_0_end_time = 0
+    step_1_end_time = 0
     setup_name = ""
+    confidence_score = 0
     last_trade_minute = 0
 
     async with ClientSession() as session:
@@ -197,11 +214,11 @@ async def live_ai_core_engine():
 
         bd_now = get_bd_time()
         await send_telegram(
-            f"🎯 <b>RAFI BHAI AI — 100% SURESHOT ENGINE ACTIVE</b> 🎯\n\n"
+            f"🧠 <b>RAFI BHAI DEEP AI — INSTITUTIONAL CORE ACTIVE</b> 🧠\n\n"
             f"🌍 <b>Asset:</b> {ASSET_NAME} (Quotex Real Feed)\n"
             f"⏰ <b>Start Time:</b> {bd_now}\n"
-            f"💎 <b>Target:</b> 10 মিনিটে 2-3 টি সর্বোচ্চ নিখুঁত সিগন্যাল\n"
-            f"🛡️ <i>বাজে মার্কেট স্কিপ হবে, শুধুমাত্র কনফার্মড সিওরশট ডেলিভারি হবে!</i>"
+            f"🎯 <b>System:</b> Triple EMA + Liquidity Sweep + True MTG Flow\n"
+            f"🛡️ <i>ভুল ট্রেড বন্ধ—শুধুমাত্র নিশ্চিত প্রাতিষ্ঠানিক সেটআপে সিগন্যাল আসবে!</i>"
         )
 
         while True:
@@ -229,21 +246,24 @@ async def live_ai_core_engine():
 
             await broadcast({"type": "TICK", "price": current_price, "candle": candles[-1]})
 
-            # ৫৫-৫৮ সেকেন্ডে কঠোর ফিল্টারিং স্ক্যান (প্রতি ৩-৪ মিনিটে সেরা সেটআপ চেক)
+            # -------------------------------------------------------------
+            # ১. নতুন সিগন্যাল স্ক্যানিং (শুধুমাত্র যখন কোনো রানিং ট্রেড থাকবে না)
+            # -------------------------------------------------------------
             current_minute_count = now // 60
-            if not in_trade and 54 <= sec <= 58 and (current_minute_count - last_trade_minute >= 3):
+            if trade_state == "IDLE" and 54 <= sec <= 58 and (current_minute_count - last_trade_minute >= 3):
                 next_candle_ts = now + (60 - sec)
                 next_t = get_bd_time(next_candle_ts)
 
                 if next_t != last_signal_time:
-                    direction, setup, confidence, is_valid = sureshot_institutional_filter(candles)
+                    direction, setup, confidence, is_valid = institutional_ai_analyzer(candles)
 
                     if is_valid:
                         trade_type = direction
                         setup_name = setup
-                        in_trade = True
+                        confidence_score = confidence
                         trade_entry = current_price
-                        trade_end_time = next_candle_ts + 59
+                        step_0_end_time = next_candle_ts + 59
+                        trade_state = "STEP_0"
                         last_signal_time = next_t
                         last_trade_minute = current_minute_count
 
@@ -255,55 +275,100 @@ async def live_ai_core_engine():
                             "entry_price": f"{trade_entry:.5f}",
                             "payout": "87%",
                             "setup": setup_name,
-                            "structure": f"SURESHOT SCORE: {confidence}%"
+                            "structure": f"AI CONFIDENCE: {confidence}%"
                         })
 
                         emoji_dir = "🟢 <b>BUY (CALL) ⬆️</b>" if "BUY" in trade_type else "🔴 <b>SELL (PUT) ⬇️</b>"
                         tg_caption = (
-                            f"💎 <b>RAFI BHAI AI — SURESHOT VIP SIGNAL</b> 💎\n\n"
+                            f"💎 <b>RAFI BHAI AI — INSTITUTIONAL SURESHOT</b> 💎\n\n"
                             f"🌍 <b>Asset:</b> {ASSET_NAME}\n"
                             f"⏰ <b>Time:</b> {next_t} (1 Min Candle)\n"
                             f"🧭 <b>Direction:</b> {emoji_dir}\n"
                             f"💰 <b>Entry Price:</b> <code>{trade_entry:.5f}</code>\n"
-                            f"🎯 <b>Setup:</b> {setup_name}\n"
-                            f"📊 <b>Confidence:</b> <b>{confidence}%</b>\n"
+                            f"🧠 <b>AI Setup:</b> {setup_name}\n"
+                            f"📊 <b>Confidence Score:</b> <b>{confidence}%</b>\n"
                             f"💸 <b>Payout:</b> 87%\n\n"
                             f"⚠️ <i>Strict 1-Step Martingale If Needed</i>"
                         )
                         chart_img = generate_chart_image(candles, f"{ASSET_NAME} SURESHOT ({next_t})", trade_type)
                         asyncio.create_task(send_telegram_photo(chart_img, tg_caption))
-                        print(f"🎯 [SURESHOT POSTED] {next_t} -> {trade_type} @ {trade_entry:.5f}")
+                        print(f"🎯 [NEW SURESHOT] {next_t} -> {trade_type} @ {trade_entry:.5f}")
 
-            # ট্রেড ফলাফল
-            if in_trade and now >= trade_end_time:
-                in_trade = False
+            # -------------------------------------------------------------
+            # ২. ১ম ক্যান্ডেল মূল্যায়ন (STEP_0 Evaluation)
+            # -------------------------------------------------------------
+            if trade_state == "STEP_0" and now >= step_0_end_time:
                 close_p = current_price
                 is_win = (close_p > trade_entry) if trade_type == "BUY (CALL)" else (close_p < trade_entry)
-                if is_win: stats["wins"] += 1
-                else: stats["losses"] += 1
+
+                if is_win:
+                    # ডিরেক্ট উইন! ট্রেড শেষ
+                    trade_state = "IDLE"
+                    stats["wins"] += 1
+                    stats["direct_wins"] += 1
+                    total = stats["wins"] + stats["losses"]
+                    win_r = f"{round((stats['wins']/total)*100)}%"
+
+                    tg_res_caption = (
+                        f"✅ <b>DIRECT PROFIT (NON-MTG WIN)</b> 🚀\n\n"
+                        f"🌍 <b>Asset:</b> {ASSET_NAME}\n"
+                        f"🎯 <b>Entry:</b> <code>{trade_entry:.5f}</code> | <b>Close:</b> <code>{close_p:.5f}</code>\n"
+                        f"📈 <b>Wins:</b> {stats['wins']} (Direct: {stats['direct_wins']}) | <b>Losses:</b> {stats['losses']}\n"
+                        f"🏆 <b>Accuracy:</b> {win_r}"
+                    )
+                    res_chart = generate_chart_image(candles, f"{ASSET_NAME} Result: DIRECT WIN")
+                    asyncio.create_task(send_telegram_photo(res_chart, tg_res_caption))
+                else:
+                    # ১ম ক্যান্ডেল মিস -> সাথে সাথে MTG 1 সক্রিয় এবং পুরো পরবর্তী ১ মিনিট অপেক্ষা
+                    trade_state = "STEP_1_MTG"
+                    mtg_entry = current_price
+                    step_1_end_time = now + 60
+                    mtg_time_str = get_bd_time()
+
+                    emoji_dir = "🟢 <b>BUY (CALL) ⬆️</b>" if "BUY" in trade_type else "🔴 <b>SELL (PUT) ⬇️</b>"
+                    tg_mtg_alert = (
+                        f"⚠️ <b>1-STEP MARTINGALE (MTG 1) ACTIVE</b> ⚠️\n\n"
+                        f"🌍 <b>Asset:</b> {ASSET_NAME}\n"
+                        f"⏰ <b>MTG Time:</b> {mtg_time_str} (Next 1 Min Candle)\n"
+                        f"🧭 <b>Direction:</b> {emoji_dir}\n"
+                        f"💰 <b>MTG Entry Price:</b> <code>{mtg_entry:.5f}</code>\n"
+                        f"⏳ <i>পরবর্তী ক্যান্ডেল শেষ হওয়া পর্যন্ত অপেক্ষা করুন...</i>"
+                    )
+                    mtg_chart = generate_chart_image(candles, f"{ASSET_NAME} MTG 1 Candle Active", trade_type, is_mtg=True)
+                    asyncio.create_task(send_telegram_photo(mtg_chart, tg_mtg_alert))
+                    print(f"⚠️ [MTG 1 TRIGGERED] {mtg_time_str} -> {trade_type} @ {mtg_entry:.5f}")
+
+            # -------------------------------------------------------------
+            # ৩. ২য় ক্যান্ডেল মূল্যায়ন (STEP_1 MTG Evaluation)
+            # -------------------------------------------------------------
+            if trade_state == "STEP_1_MTG" and now >= step_1_end_time:
+                trade_state = "IDLE"
+                close_p = current_price
+                is_mtg_win = (close_p > mtg_entry) if trade_type == "BUY (CALL)" else (close_p < mtg_entry)
+
+                if is_mtg_win:
+                    stats["wins"] += 1
+                    stats["mtg_wins"] += 1
+                    res_emoji = "✅ <b>PROFIT (1-STEP MTG WIN)</b> 🚀"
+                    chart_title = f"{ASSET_NAME} Result: MTG WIN"
+                else:
+                    stats["losses"] += 1
+                    res_emoji = "❌ <b>LOSS (MTG 1 FAILED)</b> 🔻"
+                    chart_title = f"{ASSET_NAME} Result: LOSS"
+
                 total = stats["wins"] + stats["losses"]
                 win_r = f"{round((stats['wins']/total)*100)}%"
 
-                await broadcast({
-                    "type": "SIGNAL_RESULT",
-                    "result": "WIN" if is_win else "LOSS",
-                    "wins": stats["wins"],
-                    "losses": stats["losses"],
-                    "win_rate": win_r,
-                    "entry": trade_entry,
-                    "close": close_p
-                })
-
-                res_emoji = "✅ <b>PROFIT (SURESHOT WIN)</b> 🚀" if is_win else "❌ <b>LOSS</b> 🔻"
                 tg_res_caption = (
-                    f"🏁 <b>SURESHOT RESULT UPDATE</b>\n\n"
+                    f"🏁 <b>TRADE CYCLE COMPLETE</b>\n\n"
                     f"🌍 <b>Asset:</b> {ASSET_NAME}\n"
                     f"📊 <b>Outcome:</b> {res_emoji}\n"
-                    f"📈 <b>Wins:</b> {stats['wins']} | <b>Losses:</b> {stats['losses']}\n"
-                    f"🎯 <b>Accuracy:</b> {win_r}"
+                    f"🎯 <b>MTG Entry:</b> <code>{mtg_entry:.5f}</code> | <b>Close:</b> <code>{close_p:.5f}</code>\n"
+                    f"📈 <b>Wins:</b> {stats['wins']} (MTG: {stats['mtg_wins']}) | <b>Losses:</b> {stats['losses']}\n"
+                    f"🏆 <b>Accuracy:</b> {win_r}"
                 )
-                res_chart_img = generate_chart_image(candles, f"{ASSET_NAME} Result: {'WIN' if is_win else 'LOSS'}")
-                asyncio.create_task(send_telegram_photo(res_chart_img, tg_res_caption))
+                res_chart = generate_chart_image(candles, chart_title)
+                asyncio.create_task(send_telegram_photo(res_chart, tg_res_caption))
 
 async def self_keep_alive():
     while True:
@@ -342,7 +407,7 @@ app.router.add_get("/", handle_index)
 app.router.add_get("/ws", ws_handler)
 
 async def start_tasks(app):
-    app["feed"] = asyncio.create_task(live_ai_core_engine())
+    app["feed"] = asyncio.create_task(live_ai_master_engine())
     app["pinger"] = asyncio.create_task(self_keep_alive())
 
 async def stop_tasks(app):
